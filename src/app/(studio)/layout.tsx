@@ -1,12 +1,13 @@
 import Link from "next/link";
+import SystemPromptSettings from "./_components/system-prompt-settings";
 
 export default function StudioLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto flex w-full gap-6 px-4 py-6 md:px-6">
-        <aside className="sticky top-6 hidden h-[calc(100vh-3rem)] w-64 flex-col rounded-2xl border border-divider bg-content1 p-4 md:flex">
+    <div className="h-screen overflow-hidden bg-background text-foreground">
+      <div className="mx-auto box-border flex h-full w-full gap-6 px-4 py-6 md:px-6">
+        <aside className="hidden h-full w-64 flex-col rounded-2xl border border-divider bg-content1 p-4 md:flex">
           <div className="mb-6">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Studio
@@ -26,10 +27,15 @@ export default function StudioLayout({
             </span>
           </nav>
 
-       
+          <div className="mt-auto space-y-2 border-t border-divider pt-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Settings
+            </p>
+            <SystemPromptSettings />
+          </div>
         </aside>
 
-        <main className="flex-1">{children}</main>
+        <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
       </div>
     </div>
   );

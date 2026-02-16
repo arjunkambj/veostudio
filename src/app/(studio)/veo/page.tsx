@@ -149,10 +149,6 @@ export default function VeoPage() {
     <section className="space-y-6 rounded-2xl p-4 md:p-6">
       <header className="space-y-1">
         <h2 className="text-2xl font-semibold">Veo Studio</h2>
-        <p className="text-sm text-muted-foreground">
-          Generate 9:16 UGC clips from script + image references. Output is
-          stored locally and generation logs are sent to Convex.
-        </p>
       </header>
 
       <div className="grid gap-5 lg:grid-cols-2">
@@ -163,7 +159,7 @@ export default function VeoPage() {
               value={script}
               onChange={(event) => setScript(event.target.value)}
               placeholder="Paste ad script here..."
-              className="min-h-44 w-full"
+              className=" w-full "
             />
           </div>
 
@@ -182,10 +178,12 @@ export default function VeoPage() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-">
-              <span className="text-sm pr-4 font-medium">Orchestrator Model</span>
+              <span className="text-sm pr-2 font-medium">
+                Orchestrator Model
+              </span>
               <Tabs
                 selectedKey={orchestratorModel}
-                              aria-label="Orchestrator model"
+                aria-label="Orchestrator model"
                 onSelectionChange={(key) => {
                   if (key === "gemini") {
                     setOrchestratorModel("gemini");
@@ -195,16 +193,12 @@ export default function VeoPage() {
                 <Tab key="gemini" title="Gemini" />
                 <Tab key="openai" title="OpenAI (Soon)" isDisabled />
               </Tabs>
-              <p className="text-xs text-muted-foreground">
-                OpenAI orchestrator is temporarily disabled.
-              </p>
             </div>
 
             <div className="space-y-2">
-              <span className="text-sm font-medium">Generation Model</span>
+              <span className="text-sm pr-2 font-medium">Generation Model</span>
               <Tabs
                 selectedKey={videoModel}
-                
                 aria-label="Generation model"
                 onSelectionChange={(key) =>
                   setVideoModel(String(key) as VideoModel)
@@ -213,10 +207,6 @@ export default function VeoPage() {
                 <Tab key="veo-3.1-fast" title="Veo 3.1 Fast" />
                 <Tab key="veo-3.1" title="Veo 3.1" />
               </Tabs>
-              <p className="text-xs text-muted-foreground">
-                Fast is lower latency. Veo 3.1 prioritizes higher visual
-                quality.
-              </p>
             </div>
           </div>
 

@@ -1,5 +1,5 @@
 import path from "node:path";
-
+import { getSystemPrompts } from "@/lib/config/system-prompts";
 import { logRunCreated, logRunEvent, logRunStatus } from "@/lib/convex/logger";
 import {
   getRunInputsPath,
@@ -149,6 +149,7 @@ export async function runClipGeneration(params: {
     script: input.script,
     orchestratorModel: input.orchestratorModel,
   });
+  const { generationSystemPrompt } = await getSystemPrompts();
 
   const segments = planResult.segments.map((segment) => ({
     ...segment,
@@ -156,6 +157,7 @@ export async function runClipGeneration(params: {
       segment,
       imageLabels: input.imagePaths.map((filePath) => path.basename(filePath)),
       videoModel: input.videoModel,
+      generationSystemPrompt,
     }),
   }));
 

@@ -4,8 +4,9 @@ export function buildSegmentPrompt(params: {
   segment: SegmentPlanItem;
   imageLabels: string[];
   videoModel: VideoModel;
+  generationSystemPrompt: string;
 }) {
-  const { segment, imageLabels, videoModel } = params;
+  const { segment, imageLabels, videoModel, generationSystemPrompt } = params;
 
   const imageHint =
     imageLabels.length > 0
@@ -18,14 +19,11 @@ export function buildSegmentPrompt(params: {
       : "Prioritize maximum realism, stable facial identity and natural mouth movement.";
 
   return [
-    "Create one vertical UGC talking-head ad clip for a Meta reel.",
-    "Output format: 9:16 portrait, smartphone-style camera framing, chest-up composition.",
-    "Single speaker to camera, natural handheld feel, indoor soft lighting.",
+    generationSystemPrompt,
     imageHint,
     qualityHint,
     `Narration line to speak exactly: ${segment.text}`,
     `Target duration around ${segment.targetSeconds} seconds.`,
     `Continuity requirements: ${segment.continuityNotes}`,
-    "Avoid jump cuts, avoid face changes, no subtitles burned into the video.",
   ].join(" ");
 }

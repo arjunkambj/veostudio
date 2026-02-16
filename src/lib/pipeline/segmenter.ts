@@ -1,3 +1,4 @@
+import { getSystemPrompts } from "../config/system-prompts";
 import type {
   OrchestratorModel,
   SegmentPlanItem,
@@ -136,6 +137,7 @@ function normalizeLLMSegments(rawSegments: RawLLMSegment[]): SegmentPlanItem[] {
 
 async function callGeminiSegmenter(
   script: string,
+  planningSystemPrompt: string,
 ): Promise<RawLLMSegment[] | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -146,6 +148,7 @@ async function callGeminiSegmenter(
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const prompt = [
+    `System instructions: ${planningSystemPrompt}`,
     "Segment this ad script into coherent 7-10 second speaking segments.",
     'Return strict JSON with this shape: {"segments":[{"text":string,"targetSeconds":number,"continuityNotes":string}]}',
     "Keep flow natural for a single mobile reel.",
@@ -181,6 +184,7 @@ async function callGeminiSegmenter(
 
 async function callOpenAISegmenter(
   script: string,
+  planningSystemPrompt: string,
 ): Promise<RawLLMSegment[] | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -209,8 +213,7 @@ async function callOpenAISegmenter(
       messages: [
         {
           role: "system",
-          content:
-            "You are a precise video segmentation planner. Output only valid JSON.",
+          content: planningSystemPrompt,
         },
         { role: "user", content: prompt },
       ],
@@ -234,12 +237,13 @@ async function callOpenAISegmenter(
 async function callLLMSegmenter(
   script: string,
   orchestratorModel: OrchestratorModel,
+  planningSystemPrompt: string,
 ): Promise<RawLLMSegment[] | null> {
   if (orchestratorModel === "openai") {
-    return callOpenAISegmenter(script);
+    return callOpenAISegmenter(script, planningSystemPrompt);
   }
 
-  return callGeminiSegmenter(script);
+  return callGeminiSegmenter(script, planningSystemPrompt);
 }
 
 export async function createSegmentPlan(params: {
@@ -257,9 +261,11 @@ export async function createSegmentPlan(params: {
   }
 
   try {
+    const { planningSystemPrompt } = await getSystemPrompts();
     const llmSegments = await callLLMSegmenter(
       script,
       params.orchestratorModel,
+      planningSystemPrompt,
     );
     if (!llmSegments || llmSegments.length === 0) {
       return { segments: buildHeuristicSegments(script), source: "heuristic" };
