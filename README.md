@@ -1,36 +1,84 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Veo Studio
 
-## Getting Started
+Veo Studio is a localhost-first Next.js app for generating UGC-style ad clips for mobile reels.
 
-First, run the development server:
+Current scope is intentionally narrow:
+- one workflow (`/veo`)
+- script + reference image(s) input
+- model selectors for orchestration and generation
+- OpenAI orchestrator toggle visible but disabled for now
+- clip-only output (no stitched final video yet)
+- local filesystem artifacts + Convex generation logs
+
+## Architecture
+
+- App shell + sidebar: `src/app/(studio)/layout.tsx`
+- Studio screen: `src/app/(studio)/veo/page.tsx`
+- API orchestration:
+  - `POST /api/segments/plan`
+  - `POST /api/generate`
+  - `GET /api/projects/:projectId/runs/:runId`
+  - `GET /api/projects/:projectId/runs/:runId/manifest`
+- Local storage utilities: `src/lib/storage/local.ts`
+- Pipeline modules: `src/lib/pipeline/*`
+- Convex logging functions: `convex/logs.ts`
+
+## Local Setup
+
+1. Install dependencies:
+```bash
+pnpm install
+```
+2. Run Convex (required for logs):
+```bash
+pnpm convex:dev
+```
+3. Run the app:
+```bash
+pnpm dev
+```
+4. Open `http://localhost:3000` (redirects to `/veo`).
+
+## Environment Variables
+
+Set in `.env.local`:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+NEXT_PUBLIC_CONVEX_URL=...
+CONVEX_DEPLOYMENT=...
+
+# Required for Veo generation requests
+GEMINI_API_KEY=...
+
+# Optional overrides
+GEMINI_ORCHESTRATOR_MODEL=gemini-2.0-flash
+OPENAI_API_KEY=...
+OPENAI_ORCHESTRATOR_MODEL=gpt-4.1-mini
+VEO_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Storage Behavior
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Artifacts are saved to:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```text
+storage/projects/{projectId}/runs/{runId}/
+  inputs/script.txt
+  inputs/reference-01.jpg
+  segments/segment-01-<hash>.mp4
+  manifest.json
+```
 
-## Learn More
+Duplicate-safe guarantees:
+- UUID-based `projectId` and `runId`
+- segment filename hash + version suffix fallback (`-v2`, `-v3`)
+- atomic temp-file writes before rename
 
-To learn more about Next.js, take a look at the following resources:
+## Validation
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Before opening a PR:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+pnpm lint
+pnpm build
+```
