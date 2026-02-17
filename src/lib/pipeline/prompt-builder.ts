@@ -1,17 +1,17 @@
 import type { SegmentPlanItem, VideoModel } from "./types";
 
+const GENERATION_SYSTEM_PROMPT = `Generate a UGC-style vertical video ad clip. One real-looking person speaks directly to camera in a casual setting. Natural lighting, handheld feel, authentic delivery. Lip-sync must match the narration exactly.`;
+
 export function buildSegmentPrompt(params: {
   segment: SegmentPlanItem;
-  imageLabels: string[];
+  hasImages: boolean;
   videoModel: VideoModel;
-  generationSystemPrompt: string;
 }) {
-  const { segment, imageLabels, videoModel, generationSystemPrompt } = params;
+  const { segment, hasImages, videoModel } = params;
 
-  const imageHint =
-    imageLabels.length > 0
-      ? `Reference identity/style images: ${imageLabels.join(", ")}. Preserve same face identity, hairstyle, outfit tone, and room style.`
-      : "No reference image provided. Keep a consistent single UGC creator identity.";
+  const imageHint = hasImages
+    ? "Preserve same face identity, hairstyle, outfit tone, and room style from the reference image."
+    : "Keep a consistent single UGC creator identity.";
 
   const qualityHint =
     videoModel === "veo-3.1-fast"
@@ -19,7 +19,7 @@ export function buildSegmentPrompt(params: {
       : "Prioritize maximum realism, stable facial identity and natural mouth movement.";
 
   return [
-    generationSystemPrompt,
+    GENERATION_SYSTEM_PROMPT,
     imageHint,
     qualityHint,
     `Narration line to speak exactly: ${segment.text}`,

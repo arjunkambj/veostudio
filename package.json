@@ -7,18 +7,20 @@
     "build": "next build",
     "start": "next start",
     "lint": "biome check",
-    "format": "biome format --write",
-    "convex:dev": "convex dev"
+    "format": "biome format --write"
   },
   "dependencies": {
+    "@ai-sdk/google": "^3.0.29",
+    "@fal-ai/client": "^1.9.1",
     "@heroui/react": "^2.8.2",
     "@heroui/system": "^2.4.27",
     "@heroui/theme": "^2.4.26",
-    "convex": "^1.31.7",
+    "ai": "^6.0.86",
     "framer-motion": "^12.34.0",
     "next": "16.1.6",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.0",

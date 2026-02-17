@@ -1,25 +1,17 @@
+import { promises as fs } from "node:fs";
 import path from "node:path";
-import { getSystemPrompts } from "@/lib/config/system-prompts";
-import { logRunCreated, logRunEvent, logRunStatus } from "@/lib/convex/logger";
-import {
-  getRunInputsPath,
-  getRunManifestPath,
-  getRunSegmentsPath,
-  hashForSegment,
-  readJsonFile,
-  toRelativeWorkspacePath,
-  writeBufferCollisionSafe,
-  writeJsonAtomic,
-  writeTextAtomic,
-} from "@/lib/storage/local";
+
+import { fal } from "@fal-ai/client";
+
+import { getRunSegmentsPath } from "@/lib/storage/local";
 
 import { buildSegmentPrompt } from "./prompt-builder";
 import { createSegmentPlan } from "./segmenter";
 import type {
-  GenerationInput,
+  AspectRatio,
   RunManifest,
   SegmentArtifact,
-  SegmentPlanItem,
+  VideoModel,
 } from "./types";
 import { generateVeoClip } from "./veo";
 
@@ -39,268 +31,106 @@ async function mapWithConcurrency<T, R>(
     }
   }
 
-  const workers = Array.from(
-    { length: Math.max(1, Math.min(limit, items.length)) },
-    () => runWorker(),
+  await Promise.all(
+    Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, () =>
+      runWorker(),
+    ),
   );
-
-  await Promise.all(workers);
   return results;
 }
 
-export async function saveScript(params: {
-  projectId: string;
-  runId: string;
-  script: string;
-}) {
-  const scriptPath = path.join(
-    getRunInputsPath(params.projectId, params.runId),
-    "script.txt",
-  );
-  await writeTextAtomic(scriptPath, `${params.script.trim()}\n`);
-  return scriptPath;
-}
-
-export async function saveImageFiles(params: {
-  projectId: string;
-  runId: string;
-  files: File[];
-}) {
-  const outputs: string[] = [];
-  const inputsPath = getRunInputsPath(params.projectId, params.runId);
-
-  for (let i = 0; i < params.files.length; i += 1) {
-    const file = params.files[i];
-    const ext = file.type.includes("png") ? "png" : "jpg";
-    const bytes = Buffer.from(await file.arrayBuffer());
-    const baseName = `reference-${String(i + 1).padStart(2, "0")}`;
-    const saved = await writeBufferCollisionSafe({
-      dir: inputsPath,
-      baseName,
-      extension: ext,
-      buffer: bytes,
-    });
-
-    outputs.push(saved.filePath);
+async function uploadImagesToFal(files: File[]): Promise<string[]> {
+  const urls: string[] = [];
+  for (const file of files) {
+    const url = await fal.storage.upload(file);
+    urls.push(url);
   }
-
-  return outputs;
-}
-
-function toInitialArtifact(segment: SegmentPlanItem): SegmentArtifact {
-  return {
-    index: segment.index,
-    text: segment.text,
-    targetSeconds: segment.targetSeconds,
-    continuityNotes: segment.continuityNotes,
-    prompt: segment.prompt,
-    status: "pending",
-    clipPath: null,
-    clipFileName: null,
-    downloadUrl: null,
-    durationSec: null,
-    error: null,
-  };
-}
-
-function manifestCounts(segments: SegmentArtifact[]) {
-  const successfulSegments = segments.filter(
-    (segment) => segment.status === "generated",
-  ).length;
-  const failedSegments = segments.filter(
-    (segment) => segment.status === "failed",
-  ).length;
-
-  return {
-    successfulSegments,
-    failedSegments,
-  };
+  return urls;
 }
 
 export async function runClipGeneration(params: {
   projectId: string;
   runId: string;
-  input: GenerationInput;
-  scriptPath: string;
+  script: string;
+  videoModel: VideoModel;
+  aspectRatio: AspectRatio;
+  imageFiles: File[];
 }) {
-  const { projectId, runId, input, scriptPath } = params;
+  const { projectId, runId, script, videoModel, aspectRatio, imageFiles } =
+    params;
 
-  await logRunCreated({
-    projectId,
-    runId,
-    selectedModels: {
-      orchestratorModel: input.orchestratorModel,
-      videoModel: input.videoModel,
-    },
-    scriptPreview: input.script.slice(0, 180),
-    referenceImageCount: input.imagePaths.length,
-  });
+  console.log(`[run:${runId}] Building segment plan`);
+  const planResult = await createSegmentPlan(script);
 
-  await logRunStatus({ projectId, runId, status: "planning" });
-  await logRunEvent({
-    projectId,
-    runId,
-    level: "info",
-    stage: "planning",
-    message: "Building segment plan",
-  });
-
-  const planResult = await createSegmentPlan({
-    script: input.script,
-    orchestratorModel: input.orchestratorModel,
-  });
-  const { generationSystemPrompt } = await getSystemPrompts();
+  const imageUrls =
+    imageFiles.length > 0 ? await uploadImagesToFal(imageFiles) : [];
+  const firstImageUrl = imageUrls[0] ?? undefined;
 
   const segments = planResult.segments.map((segment) => ({
     ...segment,
     prompt: buildSegmentPrompt({
       segment,
-      imageLabels: input.imagePaths.map((filePath) => path.basename(filePath)),
-      videoModel: input.videoModel,
-      generationSystemPrompt,
+      hasImages: imageUrls.length > 0,
+      videoModel,
     }),
   }));
 
-  const artifacts = segments.map(toInitialArtifact);
-
-  let manifest: RunManifest = {
-    projectId,
-    runId,
-    createdAt: new Date().toISOString(),
-    scriptPath: toRelativeWorkspacePath(scriptPath),
-    referenceImages: input.imagePaths.map(toRelativeWorkspacePath),
-    status: "generating",
-    selectedModels: {
-      orchestratorModel: input.orchestratorModel,
-      videoModel: input.videoModel,
-    },
-    segments: artifacts,
-    totalSegments: artifacts.length,
-    successfulSegments: 0,
-    failedSegments: 0,
-  };
-
-  const manifestPath = getRunManifestPath(projectId, runId);
-  await writeJsonAtomic(manifestPath, manifest);
-
-  await logRunStatus({ projectId, runId, status: "generating" });
-  await logRunEvent({
-    projectId,
-    runId,
-    level: "info",
-    stage: "planning",
-    message: "Segment plan finalized",
-    metadata: {
-      source: planResult.source,
-      totalSegments: artifacts.length,
-    },
-  });
-
-  const segmentsDir = getRunSegmentsPath(projectId, runId);
-
-  const generatedArtifacts = await mapWithConcurrency(
-    segments,
-    2,
-    async (segment, index) => {
-      try {
-        await logRunEvent({
-          projectId,
-          runId,
-          level: "info",
-          stage: "generation",
-          message: `Generating segment ${segment.index}`,
-        });
-
-        const result = await generateVeoClip({
-          prompt: segment.prompt,
-          videoModel: input.videoModel,
-          targetSeconds: segment.targetSeconds,
-        });
-
-        const baseName = `segment-${String(segment.index).padStart(2, "0")}-${hashForSegment(segment.prompt)}`;
-        const saved = await writeBufferCollisionSafe({
-          dir: segmentsDir,
-          baseName,
-          extension: result.extension,
-          buffer: result.clipBuffer,
-        });
-
-        const clipPath = saved.filePath;
-        const clipFileName = saved.fileName;
-
-        return {
-          ...artifacts[index],
-          status: "generated",
-          clipPath: toRelativeWorkspacePath(clipPath),
-          clipFileName,
-          downloadUrl: `/api/projects/${projectId}/runs/${runId}/clips/${encodeURIComponent(clipFileName)}`,
-          durationSec: result.durationSec,
-          error: null,
-        } satisfies SegmentArtifact;
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown generation error";
-
-        await logRunEvent({
-          projectId,
-          runId,
-          level: "error",
-          stage: "generation",
-          message: `Segment ${segment.index} failed`,
-          metadata: { error: errorMessage },
-        });
-
-        return {
-          ...artifacts[index],
-          status: "failed",
-          error: errorMessage,
-          clipPath: null,
-          clipFileName: null,
-          downloadUrl: null,
-          durationSec: null,
-        } satisfies SegmentArtifact;
-      }
-    },
+  console.log(
+    `[run:${runId}] Plan ready (source=${planResult.source}, segments=${segments.length})`,
   );
 
-  const counts = manifestCounts(generatedArtifacts);
-  const finalStatus = counts.failedSegments > 0 ? "failed" : "completed";
+  const segmentsDir = getRunSegmentsPath(projectId, runId);
+  await fs.mkdir(segmentsDir, { recursive: true });
 
-  manifest = {
-    ...manifest,
-    status: finalStatus,
-    segments: generatedArtifacts,
-    successfulSegments: counts.successfulSegments,
-    failedSegments: counts.failedSegments,
+  const artifacts = await mapWithConcurrency(segments, 2, async (segment) => {
+    try {
+      console.log(`[run:${runId}] Generating segment ${segment.index}`);
+
+      const clipBuffer = await generateVeoClip({
+        prompt: segment.prompt,
+        videoModel,
+        targetSeconds: segment.targetSeconds,
+        aspectRatio,
+        imageUrl: firstImageUrl,
+      });
+
+      const clipFileName = `segment-${String(segment.index).padStart(2, "0")}.mp4`;
+      await fs.writeFile(path.join(segmentsDir, clipFileName), clipBuffer);
+
+      return {
+        index: segment.index,
+        text: segment.text,
+        status: "generated",
+        clipFileName,
+        downloadUrl: `/api/projects/${projectId}/runs/${runId}/clips/${clipFileName}`,
+        error: null,
+      } satisfies SegmentArtifact;
+    } catch (error) {
+      const msg =
+        error instanceof Error ? error.message : "Unknown generation error";
+      console.error(`[run:${runId}] Segment ${segment.index} failed: ${msg}`);
+
+      return {
+        index: segment.index,
+        text: segment.text,
+        status: "failed",
+        clipFileName: null,
+        downloadUrl: null,
+        error: msg,
+      } satisfies SegmentArtifact;
+    }
+  });
+
+  const hasFailed = artifacts.some((a) => a.status === "failed");
+
+  const manifest: RunManifest = {
+    projectId,
+    runId,
+    videoModel,
+    status: hasFailed ? "failed" : "completed",
+    segments: artifacts,
   };
 
-  await writeJsonAtomic(manifestPath, manifest);
-  await logRunStatus({
-    projectId,
-    runId,
-    status: finalStatus,
-    errorMessage:
-      finalStatus === "failed"
-        ? "One or more segments failed. See generation events."
-        : undefined,
-  });
-
-  await logRunEvent({
-    projectId,
-    runId,
-    level: "info",
-    stage: "complete",
-    message: "Generation run finished",
-    metadata: {
-      finalStatus,
-      successfulSegments: counts.successfulSegments,
-      failedSegments: counts.failedSegments,
-    },
-  });
-
+  console.log(`[run:${runId}] Generation finished (status=${manifest.status})`);
   return manifest;
-}
-
-export async function loadManifest(projectId: string, runId: string) {
-  return readJsonFile<RunManifest>(getRunManifestPath(projectId, runId));
 }

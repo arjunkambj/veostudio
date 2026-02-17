@@ -12,13 +12,13 @@ The app is a Next.js App Router project focused on a single studio flow.
 Keep all new video tools behind the existing sidebar layout instead of creating standalone app roots.
 
 ## Build, Test, and Development Commands
-- `pnpm dev`: run local Next.js app (`/veo`)
-- `pnpm convex:dev`: run Convex functions for generation logs
-- `pnpm build`: production compile
-- `pnpm lint`: Biome static checks
-- `pnpm format`: auto-format with Biome
+- `bun dev`: run local Next.js app (`/veo`)
+- `bun convex:dev`: run Convex functions for generation logs
+- `bun build`: production compile
+- `bun lint`: Biome static checks
+- `bun format`: auto-format with Biome
 
-Always run `pnpm lint` and `pnpm build` before PRs.
+Always run `bun lint` and `bun build` before PRs.
 
 ## Coding Style & Naming Conventions
 - Biome rules apply (`biome.json`): 2-space indentation, organized imports.

@@ -6,7 +6,7 @@ import {
   Card,
   CardBody,
   CardHeader,
-  Input,
+  Chip,
   Link,
   Tab,
   Tabs,
@@ -15,11 +15,12 @@ import {
 import { useMemo, useState } from "react";
 
 import type {
-  OrchestratorModel,
+  AspectRatio,
   RunManifest,
   SegmentPlanItem,
   VideoModel,
 } from "@/lib/pipeline/types";
+import ImageUpload from "../_components/image-upload";
 
 type PlanResponse = {
   source: "llm" | "heuristic";
@@ -29,10 +30,7 @@ type PlanResponse = {
 type GenerateResponse = {
   projectId: string;
   runId: string;
-  status: RunManifest["status"];
   manifest: RunManifest;
-  manifestUrl: string;
-  statusUrl: string;
 };
 
 async function requestJson<T>(input: RequestInfo, init?: RequestInit) {
@@ -46,12 +44,20 @@ async function requestJson<T>(input: RequestInfo, init?: RequestInit) {
   return payload as T;
 }
 
+const segmentStatusColor: Record<string, "default" | "success" | "danger"> = {
+  generated: "success",
+  failed: "danger",
+};
+
+const segmentBorderColor: Record<string, string> = {
+  generated: "border-l-success",
+  failed: "border-l-danger",
+};
+
 export default function VeoPage() {
-  const [projectId, setProjectId] = useState<string | null>(null);
   const [script, setScript] = useState("");
-  const [orchestratorModel, setOrchestratorModel] =
-    useState<OrchestratorModel>("gemini");
   const [videoModel, setVideoModel] = useState<VideoModel>("veo-3.1-fast");
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [segmentPlan, setSegmentPlan] = useState<SegmentPlanItem[]>([]);
   const [planSource, setPlanSource] = useState<"llm" | "heuristic" | null>(
@@ -67,29 +73,9 @@ export default function VeoPage() {
   const canGenerate = script.trim().length > 0 && !generating;
 
   const estimatedDuration = useMemo(() => {
-    if (segmentPlan.length === 0) {
-      return null;
-    }
-
-    const total = segmentPlan.reduce(
-      (sum, segment) => sum + segment.targetSeconds,
-      0,
-    );
-
-    return total;
+    if (segmentPlan.length === 0) return null;
+    return segmentPlan.reduce((sum, s) => sum + s.targetSeconds, 0);
   }, [segmentPlan]);
-
-  async function ensureProjectId() {
-    if (projectId) {
-      return projectId;
-    }
-
-    const created = await requestJson<{ projectId: string }>("/api/projects", {
-      method: "POST",
-    });
-    setProjectId(created.projectId);
-    return created.projectId;
-  }
 
   async function handlePlanSegments() {
     setPlanning(true);
@@ -99,7 +85,7 @@ export default function VeoPage() {
       const payload = await requestJson<PlanResponse>("/api/segments/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ script, orchestratorModel }),
+        body: JSON.stringify({ script }),
       });
 
       setSegmentPlan(payload.segments);
@@ -118,12 +104,10 @@ export default function VeoPage() {
     setErrorMessage(null);
 
     try {
-      const currentProjectId = await ensureProjectId();
       const formData = new FormData();
       formData.set("script", script);
-      formData.set("projectId", currentProjectId);
-      formData.set("orchestratorModel", orchestratorModel);
       formData.set("videoModel", videoModel);
+      formData.set("aspectRatio", aspectRatio);
 
       for (const file of imageFiles) {
         formData.append("images", file, file.name);
@@ -147,11 +131,14 @@ export default function VeoPage() {
 
   return (
     <section className="space-y-6 rounded-2xl p-4 md:p-6">
-      <header className="space-y-1">
+      <header className="space-y-1 border-b border-divider pb-4">
         <h2 className="text-2xl font-semibold">Veo Studio</h2>
+        <p className="text-sm text-default-500">
+          Generate UGC-style vertical video clips from ad scripts
+        </p>
       </header>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-4">
           <div className="block space-y-2">
             <span className="text-sm font-medium">Script</span>
@@ -159,43 +146,15 @@ export default function VeoPage() {
               value={script}
               onChange={(event) => setScript(event.target.value)}
               placeholder="Paste ad script here..."
-              className=" w-full "
+              minRows={6}
+              className="w-full"
             />
           </div>
 
-          <div className="block space-y-2">
-            <span className="text-sm font-medium">Reference Images</span>
-            <Input
-              type="file"
-              multiple
-              accept="image/*"
-              onChange={(event) =>
-                setImageFiles(Array.from(event.target.files ?? []))
-              }
-              className="block w-full"
-            />
-          </div>
+          <ImageUpload files={imageFiles} onChange={setImageFiles} />
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-">
-              <span className="text-sm pr-2 font-medium">
-                Orchestrator Model
-              </span>
-              <Tabs
-                selectedKey={orchestratorModel}
-                aria-label="Orchestrator model"
-                onSelectionChange={(key) => {
-                  if (key === "gemini") {
-                    setOrchestratorModel("gemini");
-                  }
-                }}
-              >
-                <Tab key="gemini" title="Gemini" />
-                <Tab key="openai" title="OpenAI (Soon)" isDisabled />
-              </Tabs>
-            </div>
-
-            <div className="space-y-2">
+            <div className="space-y-1">
               <span className="text-sm pr-2 font-medium">Generation Model</span>
               <Tabs
                 selectedKey={videoModel}
@@ -208,6 +167,20 @@ export default function VeoPage() {
                 <Tab key="veo-3.1" title="Veo 3.1" />
               </Tabs>
             </div>
+
+            <div className="space-y-1">
+              <span className="text-sm pr-2 font-medium">Aspect Ratio</span>
+              <Tabs
+                selectedKey={aspectRatio}
+                aria-label="Aspect ratio"
+                onSelectionChange={(key) =>
+                  setAspectRatio(String(key) as AspectRatio)
+                }
+              >
+                <Tab key="9:16" title="9:16 (Vertical)" />
+                <Tab key="16:9" title="16:9 (Landscape)" />
+              </Tabs>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-3">
@@ -215,15 +188,17 @@ export default function VeoPage() {
               variant="bordered"
               onPress={handlePlanSegments}
               isDisabled={!canPlan}
+              isLoading={planning}
             >
-              {planning ? "Planning..." : "Plan Segments"}
+              Plan Segments
             </Button>
             <Button
               color="primary"
               onPress={handleGenerate}
               isDisabled={!canGenerate}
+              isLoading={generating}
             >
-              {generating ? "Generating Clips..." : "Generate Clips"}
+              Generate Clips
             </Button>
           </div>
 
@@ -233,61 +208,87 @@ export default function VeoPage() {
         </div>
 
         <div className="space-y-4">
-          <Card>
+          <Card shadow="sm">
             <CardHeader className="flex-col items-start">
               <h3 className="text-sm font-semibold">Planning Output</h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Source: {planSource ?? "not generated yet"}
-                {estimatedDuration
-                  ? ` · Estimated duration: ${estimatedDuration}s`
-                  : ""}
-              </p>
+              {planSource && (
+                <p className="mt-1 text-xs text-default-500">
+                  Source: {planSource}
+                  {estimatedDuration
+                    ? ` · Estimated duration: ${estimatedDuration}s`
+                    : ""}
+                </p>
+              )}
             </CardHeader>
             <CardBody>
-              <ol className="space-y-2 text-sm">
-                {segmentPlan.length === 0 ? (
-                  <li className="text-muted-foreground">
-                    No segments planned yet.
-                  </li>
-                ) : (
-                  segmentPlan.map((segment) => (
+              {segmentPlan.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <p className="text-sm text-default-400">
+                    No segments planned yet
+                  </p>
+                  <p className="mt-1 text-xs text-default-300">
+                    Paste a script and click Plan Segments to get started
+                  </p>
+                </div>
+              ) : (
+                <ol className="space-y-2 text-sm">
+                  {segmentPlan.map((segment) => (
                     <li
                       key={segment.index}
                       className="rounded-lg border border-divider bg-content2 p-2"
                     >
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-default-500">
                         Segment {segment.index} · {segment.targetSeconds}s
                       </p>
                       <p className="mt-1">{segment.text}</p>
                     </li>
-                  ))
-                )}
-              </ol>
+                  ))}
+                </ol>
+              )}
             </CardBody>
           </Card>
 
-          <Card>
+          <Card shadow="sm">
             <CardHeader>
               <h3 className="text-sm font-semibold">Latest Run</h3>
             </CardHeader>
             <CardBody>
               {manifest ? (
                 <div className="space-y-3 text-sm">
-                  <p className="text-xs text-muted-foreground">
-                    Run ID: {lastRunId} · Status: {manifest.status} · Models:{" "}
-                    {manifest.selectedModels.orchestratorModel}/{" "}
-                    {manifest.selectedModels.videoModel}
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-default-500">
+                    <span>Run: {lastRunId}</span>
+                    <Chip
+                      size="sm"
+                      color={
+                        manifest.status === "completed" ? "success" : "danger"
+                      }
+                      variant="flat"
+                    >
+                      {manifest.status}
+                    </Chip>
+                    <span>{manifest.videoModel}</span>
+                  </div>
 
                   <ul className="space-y-2">
                     {manifest.segments.map((segment) => (
                       <li
                         key={segment.index}
-                        className="rounded-lg border border-divider bg-content2 p-2"
+                        className={`rounded-lg border border-divider border-l-3 ${segmentBorderColor[segment.status] ?? ""} bg-content2 p-2`}
                       >
-                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          Segment {segment.index} · {segment.status}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-default-500">
+                            Segment {segment.index}
+                          </p>
+                          <Chip
+                            size="sm"
+                            color={
+                              segmentStatusColor[segment.status] ?? "default"
+                            }
+                            variant="flat"
+                          >
+                            {segment.status}
+                          </Chip>
+                        </div>
                         <p className="mt-1 line-clamp-2">{segment.text}</p>
                         {segment.downloadUrl ? (
                           <Link
@@ -311,9 +312,14 @@ export default function VeoPage() {
                   </ul>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">
-                  No generation run yet.
-                </p>
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <p className="text-sm text-default-400">
+                    No generation run yet
+                  </p>
+                  <p className="mt-1 text-xs text-default-300">
+                    Click Generate Clips to start creating video segments
+                  </p>
+                </div>
               )}
             </CardBody>
           </Card>
